@@ -1,0 +1,49 @@
+---
+# Playbook: Undeploy the Image Factory from AWS EC2
+# Still under development...
+
+- name: Undeploying Image Factory Environment
+  hosts: localhost
+  connection: local
+
+  tasks:
+
+#    - name: Terminating the Compute Instance
+#      ec2:
+#        region: "{{ region }}"
+#        zone: "{{ zone }}"
+#        key_name: "{{ key_name }}"
+#        instance_type: "{{ instance_type }}"
+#        image: "{{ imgfactory_env[region]['ami_id'] }}"
+#        vpc_subnet_id: "{{ imgfactory_env[region]['subnet_id'] }}"
+#        state: absent
+#        wait: true
+#        instance_tags:
+#          Name: "{{ instance_name }}"
+#          Creation: "{{ ansible_date_time.date }} {{ ansible_date_time.hour }}:{{ ansible_date_time.minute }}"
+#          Description: "{{ instance_description }}'"
+#        volumes:
+#          - device_name: "{{imgfactory_env[region]['ami_rdn']}}"
+#            volume_size: "{{ bootdisk_size }}"
+#            delete_on_termination: true
+#      register: ec2
+
+    - name: Deleting VPC Security Group
+      ec2_group:
+        name: "{{group_name}}"
+        description: "{{group_desc}}"
+        vpc_id: "{{ imgfactory_env[region]['vpc_id'] }}"
+        region: "{{region}}"
+        state: absent
+        rules:
+          - proto: tcp
+            to_port: 22
+            from_port: 22
+            cidr_ip: "0.0.0.0/0"
+          - proto: tcp
+            to_port: 8080
+            from_port: 8080
+            cidr_ip: "0.0.0.0/0"
+      register: sg_imgfactory
+
+

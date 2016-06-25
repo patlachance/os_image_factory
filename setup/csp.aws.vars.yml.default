@@ -1,0 +1,19 @@
+---
+instance_name: ImgFactory
+instance_description: Image Factory
+csp: aws
+region: eu-west-1
+zone: eu-west-1c
+instance_type: t2.medium
+bootdisk_size: 50
+key_name: the_key
+group_name: secgrp-imgfactory
+group_desc: Image Factory Security Group - auto generated
+
+imgfactory_env:
+  eu-west-1:
+    ami_id: ami-7abd0209
+    ami_rdn: /dev/sda1
+    vpc_id: vpc-xxxxxxxx
+    subnet_id: subnet-xxxxxxxx
+

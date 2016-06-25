@@ -1,0 +1,94 @@
+---
+# Playbook: Instanciate the Image Factory on AWS EC2
+
+- name: Creating Image Factory Environment
+  hosts: localhost
+  connection: local
+
+  tasks:
+
+    - name: Creating VPC Security Group
+      ec2_group:
+        name: "{{group_name}}"
+        description: "{{group_desc}}"
+        vpc_id: "{{ imgfactory_env[region]['vpc_id'] }}"
+        region: "{{region}}"
+        rules:
+          - proto: tcp
+            to_port: 22
+            from_port: 22
+            cidr_ip: "0.0.0.0/0"
+          - proto: tcp
+            to_port: 8080
+            from_port: 8080
+            cidr_ip: "0.0.0.0/0"
+      register: sg_imgfactory
+
+    - name: Tagging VPC Security Group
+      ec2_tag:
+        region: "{{region}}"
+        resource: "{{sg_imgfactory.group_id}}"
+        state: present
+        tags:
+          Name: "{{group_name}}"
+
+    - name: Generating 'userdata'
+      set_fact:
+         userdata: |
+           #!/bin/bash
+           # preparing prerequisites
+           yum -y update
+           yum -y remove python*-pip
+           yum -y install git python-devel python-setuptools gcc libffi-devel openssl-devel
+           for i in 1 2 3 4 5; do easy_install pip && break || sleep 2; done
+           pip install -U pyopenssl ndg-httpsclient pyasn1
+           pip install -U pip ansible
+           mkdir /etc/ansible
+           echo -e "[local]\n127.0.0.1 ansible_connection=local ansible_ssh_user=centos" > /etc/ansible/hosts
+           #git clone https://github.com/cloudwatt/os_image_factory.git /root/os_image_factory
+           git clone https://github.com/patlachance/os_image_factory.git /root/os_image_factory
+           cd /root/os_image_factory
+           git fetch
+           git checkout -b rhel_based_system_compat origin/rhel_based_system_compat 
+           /bin/ansible-playbook /root/os_image_factory/setup/os_image_factory.playbook.yml -vvv > /var/log/os_image_factory.setup.log 2>&1
+           # setting jenkins environment
+           mkdir -p /var/lib/jenkins
+           cat <<EOT > /var/lib/jenkins/.profile
+           export AWS_ACCESS_KEY_ID=""
+           export AWS_SECRET_ACCESS_KEY=""
+           export OS_REGION_NAME="fr1"
+           export FACTORY_NETWORK_ID="{{imgfactory_env[region]['subnet_id']}}"
+           export FACTORY_SECURITY_GROUP_ID="{{sg_imgfactory.group_id}}"
+           export FACTORY_SECURITY_GROUP_NAME="{{group_name}}""
+           EOT
+           chown jenkins:jenkins /var/lib/jenkins/.profile
+           chmod 644 /var/lib/jenkins/.profile
+          
+    - name: Provision Compute Instance
+      ec2:
+         region: "{{ region }}"
+         zone: "{{ zone }}"
+         key_name: "{{ key_name }}"
+         group_id: "{{ sg_imgfactory.group_id }}"
+         instance_type: "{{ instance_type }}"
+         image: "{{ imgfactory_env[region]['ami_id'] }}"
+         vpc_subnet_id: "{{ imgfactory_env[region]['subnet_id'] }}"
+         wait: true
+         exact_count: 1
+         user_data: "{{ userdata }}"
+         count_tag:
+            Name: "{{ instance_name }}"
+         instance_tags:
+            Name: "{{ instance_name }}"
+            Creation: "{{ ansible_date_time.date }} {{ ansible_date_time.hour }}:{{ ansible_date_time.minute }}"
+            Description: "{{ instance_description }}'"
+         volumes:
+            - device_name: "{{imgfactory_env[region]['ami_rdn']}}"
+              volume_size: "{{ bootdisk_size }}"
+              delete_on_termination: true
+      register: ec2
+
+    - name: Characteristics of the newly created instance
+      debug: msg="INSTANCE ID={{ item.id }}"
+      with_items: "{{ec2.instances}}"
+
